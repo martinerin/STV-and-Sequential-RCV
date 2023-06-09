@@ -1,0 +1,153 @@
+---
+title: "STV and Sequential RCV"
+date: '2023-05-08'
+output: 
+  html_document:
+    code_folding: "hide"
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r libraries, include = FALSE}
+library(tidyverse)
+library(DT)
+library(knitr)
+library(gridExtra)
+library(cowplot)
+```
+
+## Background
+
+We have 1070 Scottish elections and 8 Utah elections that we analyzed using STV and sequential RCV.  We wanted to determine which method would result in more voters receiving at least one elected official they voted for.
+
+## The data
+
+This is our Scottish election data.
+
+```{r}
+data <- read_csv("sequential RCV data.csv", skip = 1, 
+                 col_names = c("election","Cond_committee","STV_winners","RCV_winners", "prop_get_at_least_one_STV","prop_get_at_least_one_RCV", "Degree_max_rep_STV","Degree_max_rep_RCV","parties_STV","parties_RCV", "num_parties_STV","num_parties_RCV")) %>%
+  mutate(Degree_misrep_STV = 1 - prop_get_at_least_one_STV,
+         Degree_misrep_RCV = 1 - prop_get_at_least_one_RCV) %>%
+  select(-prop_get_at_least_one_STV, -prop_get_at_least_one_RCV)
+datatable(data)
+```
+
+We also decided to see the results if all of the elections were just 2-seat elections because the Utah elections were all 2-seat elections.  Notice there is one fewer election here because one of the elections had a three-way tie, so we removed it.
+
+```{r}
+# When we read in the 2-seat elections, we need to remove one of the elections that had a three-way tie.
+dataS2 <- read_csv("sequential RCV data S=2 updated.csv", skip = 1, 
+                   col_names = c("election","Cond_committee","STV_winners","RCV_winners", "prop_get_at_least_one_STV","prop_get_at_least_one_RCV", "Degree_max_rep_STV","Degree_max_rep_RCV","parties_STV","parties_RCV", "num_parties_STV","num_parties_RCV")) %>%
+  mutate(prop_get_at_least_one_RCV = as.double(prop_get_at_least_one_RCV),
+         Degree_max_rep_RCV = as.double(Degree_max_rep_RCV),
+         num_parties_RCV = as.integer(num_parties_RCV),
+         Degree_misrep_STV = 1 - prop_get_at_least_one_STV,
+         Degree_misrep_RCV = 1 - prop_get_at_least_one_RCV) %>%
+  select(-prop_get_at_least_one_STV, -prop_get_at_least_one_RCV) %>%
+  filter(election != "moray17-ballots/moray17-03.blt")
+datatable(dataS2)
+```
+
+And here is the Utah election data.
+
+```{r}
+dataU <- read_csv("Cond committee Utah.csv", skip = 1, 
+                  col_names = c("election","Cond_committee","STV_winners","RCV_winners",
+                                "prop_get_at_least_one_STV","prop_get_at_least_one_RCV",
+                                "Degree_max_rep_STV","Degree_max_rep_RCV")) %>%
+  mutate(Degree_misrep_STV = 1 - prop_get_at_least_one_STV,
+         Degree_misrep_RCV = 1 - prop_get_at_least_one_RCV) %>%
+  select(-prop_get_at_least_one_STV, -prop_get_at_least_one_RCV)
+datatable(dataU)
+```
+
+
+
+
+
+## Results
+
+We removed all of the elections where the STV winner set was the same as the RCV winner set since those are not interesting for this analysis.  Then we formatted the data and analyzed our results.
+
+```{r}
+data <- data %>%
+  filter(STV_winners != RCV_winners) %>%
+  select(election, Degree_max_rep_STV, Degree_max_rep_RCV, Degree_misrep_STV, Degree_misrep_RCV)
+
+dataS2 <- dataS2 %>%
+  filter(STV_winners != RCV_winners) %>%
+  select(election, Degree_max_rep_STV, Degree_max_rep_RCV, Degree_misrep_STV, Degree_misrep_RCV)
+
+dataU <- dataU %>%
+  filter(STV_winners != RCV_winners) %>%
+  select(election, Degree_max_rep_STV, Degree_max_rep_RCV, Degree_misrep_STV, Degree_misrep_RCV)
+
+```
+
+```{r ScottishPlot}
+sample_size <- nrow(data)
+
+data1a <- data %>%
+  mutate(row_num = row_number()) %>%
+  pivot_longer(cols = 2:5, names_to = "type", values_to = "percent") %>%
+  mutate(RCVvsSTV = case_when(str_detect(type, "RCV") == TRUE ~ "RCV", 
+                              str_detect(type, "STV") == TRUE ~ "STV"))
+
+ggplot(data1a, aes(x = type, y = percent*100, fill = RCVvsSTV)) +
+  geom_boxplot() +
+  labs(x = "", y = "Percent",
+       title = "Degree of Misrepresentation and Degree of Maximal Representation", 
+       subtitle = paste0("Number of elections: ", sample_size), fill = "Method") +
+#  coord_flip() +
+  theme_bw() +
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r 2SeatScottishPlot}
+sample_sizeS2 <- nrow(dataS2)
+
+dataS2a <- dataS2 %>%
+  mutate(row_num = row_number()) %>%
+  pivot_longer(cols = 2:5, names_to = "type", values_to = "percent") %>%
+  mutate(RCVvsSTV = case_when(str_detect(type, "RCV") == TRUE ~ "RCV", 
+                              str_detect(type, "STV") == TRUE ~ "STV"))
+
+ggplot(dataS2a, aes(x = type, y = percent*100, fill = RCVvsSTV)) +
+  geom_boxplot() +
+  labs(x = "", y = "Percent",
+       title = "Degree of Misrepresentation and Degree of Maximal Representation in 2-Seat Elections", 
+       subtitle = paste0("Number of elections: ", sample_sizeS2), fill = "Method") +
+#  coord_flip() +
+  theme_bw() +
+  theme(legend.position = "none") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+```{r UtahPlot}
+sample_sizeU <- nrow(dataU)
+
+dataU1 <- dataU %>%
+  mutate(row_num = row_number()) %>%
+  pivot_longer(cols = 2:5, names_to = "type", values_to = "percent") %>%
+  mutate(RCVvsSTV = case_when(str_detect(type, "RCV") == TRUE ~ "RCV", 
+                              str_detect(type, "STV") == TRUE ~ "STV"))
+
+ggplot(dataU1, aes(x = type, y = percent*100, color = RCVvsSTV)) +
+  geom_point(aes(shape = election), size = 2) +
+  labs(x = "", y = "Percent",
+       title = "The Proportion of Voters in the Utah Elections \nwhere the winner set had Candidates they voted for", 
+       subtitle = paste0("Number of elections: ", sample_sizeU), color = "Method",
+       shape = "Election") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
